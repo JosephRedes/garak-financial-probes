@@ -1,0 +1,184 @@
+# Enterprise Configuration for Financial Probes
+# Designed for testing models hosted on internal infrastructure
+#
+# Usage:
+#   garak --config examples/enterprise_config.yaml
+#
+# This configuration enables all probes AND buffs for comprehensive testing
+# Recommended for pre-deployment security assessment of enterprise AI applications
+
+---
+# ============================================
+# MODEL CONFIGURATION - REST ENDPOINT
+# ============================================
+# Configure your internal model endpoint here
+
+model_type: rest
+model_name: https://your-model-endpoint.internal.company.com/v1/chat/completions
+
+# Authentication (uncomment and configure as needed)
+# rest_api_key: ${MODEL_API_KEY}  # Uses environment variable
+
+# Custom headers (uncomment if your endpoint requires them)
+# rest_headers:
+#   Authorization: "Bearer ${AUTH_TOKEN}"
+#   X-API-Version: "2024-01"
+#   Content-Type: "application/json"
+
+# Request format (OpenAI-compatible is default)
+# rest_request_format: openai  # Options: openai, raw
+
+# ============================================
+# ALTERNATIVE MODEL BACKENDS
+# ============================================
+# Uncomment the appropriate section for your infrastructure
+
+# --- vLLM Serving ---
+# model_type: rest
+# model_name: http://vllm-server:8000/v1/chat/completions
+
+# --- NVIDIA Triton ---
+# model_type: rest  
+# model_name: http://triton-server:8000/v2/models/llama/infer
+
+# --- Azure OpenAI ---
+# model_type: openai
+# model_name: your-deployment-name
+# openai_api_base: https://your-resource.openai.azure.com/
+# openai_api_key: ${AZURE_OPENAI_KEY}
+
+# --- HuggingFace TGI ---
+# model_type: rest
+# model_name: http://tgi-server:8080/generate
+
+# --- Local Ollama (for development) ---
+# model_type: ollama
+# model_name: llama2
+
+# ============================================
+# FINANCIAL PROBES - All 8 Categories Enabled
+# ============================================
+plugins:
+  probes:
+    # Investment advice and recommendations
+    financial.impartiality:
+      active: true
+    
+    # Market manipulation, insider trading
+    financial.misconduct:
+      active: true
+    
+    # MNPI and confidential information leakage
+    financial.disclosure:
+      active: true
+    
+    # Fabricated market data and hallucinations
+    financial.hallucination:
+      active: true
+    
+    # SEC, FINRA, AML/KYC violations
+    financial.compliance:
+      active: true
+    
+    # Financial calculation errors
+    financial.calculation:
+      active: true
+    
+    # Proprietary data and algorithm exposure
+    financial.leakage:
+      active: true
+    
+    # Sycophantic validation of risky decisions
+    financial.sycophancy:
+      active: true
+
+  # ============================================
+  # DETECTORS - Pattern Matching + Heuristics
+  # ============================================
+  detectors:
+    financial.advice:
+      active: true
+    
+    financial.misconduct:
+      active: true
+    
+    financial.factcheck:
+      active: true
+    
+    financial.compliance:
+      active: true
+
+  # ============================================
+  # BUFFS - Prompt Augmentation (Enterprise)
+  # ============================================
+  # These multiply your base prompts for comprehensive coverage
+  # Comment out individual buffs to reduce test time
+  
+  buffs:
+    # Encoding variations - test guardrail bypass via obfuscation
+    financial.buffs.encoding.Base64Buff:
+      active: true
+    
+    financial.buffs.encoding.ROT13Buff:
+      active: true
+    
+    financial.buffs.encoding.LeetSpeakBuff:
+      active: true
+    
+    # Persona variations - test behavior with different user types
+    financial.buffs.persona.PersonaVariationBuff:
+      active: true
+    
+    financial.buffs.persona.RolePlayBuff:
+      active: true
+    
+    financial.buffs.persona.UrgencyBuff:
+      active: true
+    
+    # Financial entity swaps - test consistency across securities
+    financial.buffs.financial.FinancialEntityBuff:
+      active: true
+    
+    financial.buffs.financial.AmountVariationBuff:
+      active: true
+    
+    financial.buffs.financial.TimeframeVariationBuff:
+      active: true
+    
+    # Jailbreak techniques - test guardrail robustness
+    financial.buffs.jailbreak.JailbreakPrefixBuff:
+      active: true
+    
+    financial.buffs.jailbreak.JailbreakSuffixBuff:
+      active: true
+    
+    # CAUTION: More aggressive jailbreaks (uncomment if needed)
+    # financial.buffs.jailbreak.MultiTurnJailbreakBuff:
+    #   active: true
+    # financial.buffs.jailbreak.ObfuscatedJailbreakBuff:
+    #   active: true
+
+# ============================================
+# REPORTING OPTIONS
+# ============================================
+reporting:
+  output_dir: ./garak_enterprise_reports
+  formats:
+    - json
+    - html
+  
+  # Include for compliance documentation
+  include_prompts: true
+  include_responses: true
+  include_timestamps: true
+
+# ============================================
+# ESTIMATED COVERAGE
+# ============================================
+# Base prompts: ~250
+# With active buffs: ~5,000+ test cases
+# Estimated runtime: Depends on model latency
+#   - Fast endpoint (~100ms): ~10 minutes
+#   - Slower endpoint (~1s): ~1.5 hours
+#
+# For faster runs, comment out buff sections above

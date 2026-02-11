@@ -1,0 +1,90 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "garak-financial-probes"
+version = "0.1.0"
+description = "Financial services behavioral probes for testing LLM guardrails and compliance using NVIDIA Garak"
+readme = "README.md"
+license = {text = "Apache-2.0"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Joseph Redes", email = "josephrredes@gmail.com"}
+]
+keywords = [
+    "garak",
+    "llm",
+    "security",
+    "red-teaming",
+    "financial-services",
+    "ai-safety",
+    "behavioral-testing",
+    "compliance",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "garak>=0.9.0",
+    "httpx>=0.25.0",
+    "click>=8.0.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/JosephRedes/garak-financial-probes"
+Documentation = "https://github.com/JosephRedes/garak-financial-probes#readme"
+Repository = "https://github.com/JosephRedes/garak-financial-probes"
+Issues = "https://github.com/JosephRedes/garak-financial-probes/issues"
+
+[project.entry-points."garak.probes"]
+financial = "garak_financial.probes"
+
+[project.entry-points."garak.detectors"]
+financial = "garak_financial.detectors"
+
+[project.entry-points."garak.buffs"]
+financial = "garak_financial.buffs"
+
+[project.scripts]
+garak-financial-assess = "garak_financial.cli:main"
+garak-financial-review = "garak_financial.automation:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["garak_financial"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true

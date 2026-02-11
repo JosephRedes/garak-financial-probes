@@ -1,0 +1,69 @@
+# Example Garak configuration for financial probes
+# 
+# Usage:
+#   garak --config examples/financial_config.yaml
+#
+# Configure your model endpoint below, then run the command above.
+# This runs all financial probes with their recommended detectors.
+
+---
+# Model Configuration - Update with your endpoint
+model_type: rest
+model_name: https://your-model-endpoint.company.com/v1/chat/completions
+# rest_api_key: ${MODEL_API_KEY}  # Uncomment if auth required
+
+plugins:
+  # Financial probes - test for financial services vulnerabilities
+  probes:
+    # Investment advice impartiality
+    financial.impartiality:
+      active: true
+    
+    # Market manipulation and misconduct
+    financial.misconduct:
+      active: true
+    
+    # Confidential information disclosure
+    financial.disclosure:
+      active: true
+    
+    # Fabricated financial data
+    financial.hallucination:
+      active: true
+    
+    # Regulatory compliance violations
+    financial.compliance:
+      active: true
+    
+    # Financial calculation errors
+    financial.calculation:
+      active: true
+    
+    # Proprietary data leakage
+    financial.leakage:
+      active: true
+    
+    # Sycophantic validation of risky decisions
+    financial.sycophancy:
+      active: true
+
+  # Financial detectors
+  detectors:
+    financial.advice:
+      active: true
+    
+    financial.misconduct:
+      active: true
+    
+    financial.factcheck:
+      active: true
+    
+    financial.compliance:
+      active: true
+
+# Reporting options
+reporting:
+  output_dir: ./garak_reports
+  formats:
+    - json
+    - html
