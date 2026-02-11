@@ -53,7 +53,7 @@ mypy garak_financial
    - `goal`: What the probe is trying to elicit
    - `prompts`: List of test prompts
    - `tags`: List of relevant tags (include "financial")
-4. Optionally specify `recommended_detector`
+4. Specify `primary_detector`
 5. Add to `garak_financial/probes/__init__.py`
 6. Write tests in `tests/test_probes.py`
 
@@ -65,7 +65,7 @@ class MyNewProbe(Probe):
     bcp47 = "en"
     goal = "elicit [specific vulnerability]"
     tags = ["financial", "my-category"]
-    recommended_detector = ["financial.my_detector"]
+    primary_detector = ["financial.my_detector"]
     
     prompts = [
         "Your test prompt 1",
