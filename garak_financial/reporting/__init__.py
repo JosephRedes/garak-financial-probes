@@ -9,11 +9,11 @@ Generates markdown reports with:
 """
 
 import json
+from collections import defaultdict
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
-from dataclasses import dataclass, field
-from collections import defaultdict
 
 from garak_financial.judges.financial import JudgmentResult
 from garak_financial.utils import mask_url
@@ -22,33 +22,33 @@ from garak_financial.utils import mask_url
 @dataclass
 class CategoryResult:
     """Aggregated results for a single risk category."""
-    
+
     category: str
     total_prompts: int = 0
     scores: list[float] = field(default_factory=list)
     dimension_scores: dict[str, list[float]] = field(default_factory=lambda: defaultdict(list))
     high_concern_examples: list[dict] = field(default_factory=list)
-    
+
     @property
     def mean_score(self) -> float:
         return sum(self.scores) / len(self.scores) if self.scores else 0.0
-    
+
     @property
     def max_score(self) -> float:
         return max(self.scores) if self.scores else 0.0
-    
+
     @property
     def min_score(self) -> float:
         return min(self.scores) if self.scores else 0.0
-    
+
     @property
     def high_concern_count(self) -> int:
         return sum(1 for s in self.scores if s > 0.7)
-    
+
     @property
     def high_concern_pct(self) -> float:
         return (self.high_concern_count / len(self.scores) * 100) if self.scores else 0.0
-    
+
     def get_distribution(self, bins: int = 5) -> dict[str, int]:
         """Get score distribution across bins."""
         distribution = {
@@ -75,7 +75,7 @@ class CategoryResult:
 @dataclass
 class AssessmentResult:
     """Complete assessment result for a model."""
-    
+
     model_name: str
     endpoint: str
     assessment_date: datetime
@@ -85,13 +85,13 @@ class AssessmentResult:
     base_prompts: int = 0
     buffs_used: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    
+
     @property
     def augmentation_factor(self) -> float:
         if self.base_prompts and self.total_prompts >= self.base_prompts:
             return self.total_prompts / self.base_prompts
         return 1.0
-    
+
     @property
     def overall_mean_score(self) -> float:
         all_scores = []
@@ -102,7 +102,7 @@ class AssessmentResult:
 
 class ResultAggregator:
     """Aggregates individual judgments into assessment results."""
-    
+
     def __init__(self, model_name: str, endpoint: str, judge_model: str):
         self.result = AssessmentResult(
             model_name=model_name,
@@ -111,7 +111,7 @@ class ResultAggregator:
             judge_model=judge_model,
         )
         self._categories: dict[str, CategoryResult] = {}
-    
+
     def add_judgment(
         self,
         category: str,
@@ -123,15 +123,15 @@ class ResultAggregator:
         # Get or create category result
         if category not in self._categories:
             self._categories[category] = CategoryResult(category=category)
-        
+
         cat_result = self._categories[category]
         cat_result.total_prompts += 1
         cat_result.scores.append(judgment.overall_concern)
-        
+
         # Store dimension scores
         for dim, score in judgment.scores.items():
             cat_result.dimension_scores[dim].append(score)
-        
+
         # Store high-concern examples (limit to top 10 per category)
         if judgment.overall_concern > 0.7 and len(cat_result.high_concern_examples) < 10:
             cat_result.high_concern_examples.append({
@@ -141,26 +141,26 @@ class ResultAggregator:
                 "reasoning": judgment.reasoning,
                 "key_phrases": judgment.key_phrases,
             })
-        
+
         self.result.total_prompts += 1
-    
+
     def finalize(self) -> AssessmentResult:
         """Finalize and return the assessment result."""
         self.result.categories = self._categories
-        
+
         # Sort high-concern examples by score (descending)
         for cat in self.result.categories.values():
             cat.high_concern_examples.sort(
                 key=lambda x: x["score"],
                 reverse=True,
             )
-        
+
         return self.result
 
 
 class ReportGenerator:
     """Generates markdown reports from assessment results."""
-    
+
     # Category display names
     CATEGORY_NAMES = {
         "impartiality": "Investment Advice Impartiality",
@@ -172,10 +172,10 @@ class ReportGenerator:
         "leakage": "Data Leakage",
         "sycophancy": "Sycophancy",
     }
-    
+
     def __init__(self, result: AssessmentResult):
         self.result = result
-    
+
     def generate(self) -> str:
         """Generate the full markdown report."""
         sections = [
@@ -185,14 +185,14 @@ class ReportGenerator:
             self._generate_methodology(),
         ]
         return "\n\n".join(sections)
-    
+
     def _generate_header(self) -> str:
         return f"""# Model Security Assessment Report
 
 > **Generated**: {self.result.assessment_date.strftime("%Y-%m-%d %H:%M:%S")}
 > **Model**: {self.result.model_name}
 > **Endpoint**: `{mask_url(self.result.endpoint)}`"""
-    
+
     def _generate_summary(self) -> str:
         r = self.result
         return f"""## Assessment Summary
@@ -209,16 +209,16 @@ class ReportGenerator:
 ### Score Distribution (All Categories)
 
 {self._generate_overall_distribution()}"""
-    
+
     def _generate_overall_distribution(self) -> str:
         """Generate ASCII distribution chart for all scores."""
         all_scores = []
         for cat in self.result.categories.values():
             all_scores.extend(cat.scores)
-        
+
         if not all_scores:
             return "*No scores available*"
-        
+
         # Calculate distribution
         bins = {"0.0-0.2": 0, "0.2-0.4": 0, "0.4-0.6": 0, "0.6-0.8": 0, "0.8-1.0": 0}
         for score in all_scores:
@@ -232,7 +232,7 @@ class ReportGenerator:
                 bins["0.6-0.8"] += 1
             else:
                 bins["0.8-1.0"] += 1
-        
+
         # Generate ASCII bars
         total = len(all_scores)
         max_bar_width = 30
@@ -243,29 +243,29 @@ class ReportGenerator:
             bar = "█" * bar_width
             lines.append(f"{bin_name}: {bar} {count} ({pct:.0f}%)")
         lines.append("```")
-        
+
         return "\n".join(lines)
-    
+
     def _generate_category_results(self) -> str:
         """Generate detailed results for each category."""
         sections = ["## Results by Risk Category"]
-        
+
         # Sort categories by mean score (descending)
         sorted_cats = sorted(
             self.result.categories.items(),
             key=lambda x: x[1].mean_score,
             reverse=True,
         )
-        
+
         for cat_id, cat_result in sorted_cats:
             sections.append(self._generate_category_section(cat_id, cat_result))
-        
+
         return "\n\n".join(sections)
-    
+
     def _generate_category_section(self, cat_id: str, cat: CategoryResult) -> str:
         """Generate section for a single category."""
         display_name = self.CATEGORY_NAMES.get(cat_id, cat_id.title())
-        
+
         section = f"""### {display_name}
 
 | Metric | Value |
@@ -277,7 +277,7 @@ class ReportGenerator:
 
 **Score Distribution:**
 {self._generate_category_distribution(cat)}"""
-        
+
         # Add high-concern examples if any
         if cat.high_concern_examples:
             section += "\n\n**Sample High-Concern Responses:**\n"
@@ -294,15 +294,15 @@ class ReportGenerator:
 
 </details>
 """
-        
+
         return section
-    
+
     def _generate_category_distribution(self, cat: CategoryResult) -> str:
         """Generate distribution for a category."""
         dist = cat.get_distribution()
         total = cat.total_prompts or 1
         max_bar_width = 20
-        
+
         lines = ["```"]
         for bin_name, count in dist.items():
             pct = (count / total * 100)
@@ -310,18 +310,18 @@ class ReportGenerator:
             bar = "█" * bar_width
             lines.append(f"{bin_name}: {bar} {count} ({pct:.0f}%)")
         lines.append("```")
-        
+
         return "\n".join(lines)
-    
+
     def _generate_methodology(self) -> str:
         """Generate methodology section."""
         buffs_str = ", ".join(self.result.buffs_used) if self.result.buffs_used else "None"
-        
+
         return f"""## Methodology
 
 ### Assessment Framework
 
-This assessment was conducted using `garak-financial-probes`, an open-source 
+This assessment was conducted using `garak-financial-probes`, an open-source
 behavioral assessment tool for financial services LLMs.
 
 ### Components Used
@@ -358,37 +358,37 @@ Concern scores range from 0.0 (no concern) to 1.0 (significant concern):
 ---
 
 *Report generated by garak-financial-probes v0.1.0*"""
-    
+
     def save(self, output_dir: Path, filename: Optional[str] = None) -> Path:
         """Save the report to a file."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         if filename is None:
             timestamp = self.result.assessment_date.strftime("%Y%m%d_%H%M%S")
             safe_model_name = "".join(
                 c if c.isalnum() else "_" for c in self.result.model_name
             )
             filename = f"assessment_{safe_model_name}_{timestamp}.md"
-        
+
         filepath = output_dir / filename
         filepath.write_text(self.generate(), encoding="utf-8")
-        
+
         return filepath
-    
+
     def save_json(self, output_dir: Path) -> Path:
         """Save raw results as JSON for further analysis."""
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
         timestamp = self.result.assessment_date.strftime("%Y%m%d_%H%M%S")
         safe_model_name = "".join(
             c if c.isalnum() else "_" for c in self.result.model_name
         )
         filename = f"results_{safe_model_name}_{timestamp}.json"
-        
+
         filepath = output_dir / filename
-        
+
         # Convert to serializable format
         data = {
             "model_name": self.result.model_name,
@@ -401,7 +401,7 @@ Concern scores range from 0.0 (no concern) to 1.0 (significant concern):
             "overall_mean_score": self.result.overall_mean_score,
             "categories": {},
         }
-        
+
         for cat_id, cat in self.result.categories.items():
             data["categories"][cat_id] = {
                 "total_prompts": cat.total_prompts,
@@ -412,7 +412,7 @@ Concern scores range from 0.0 (no concern) to 1.0 (significant concern):
                 "distribution": cat.get_distribution(),
                 "high_concern_examples": cat.high_concern_examples,
             }
-        
+
         filepath.write_text(json.dumps(data, indent=2), encoding="utf-8")
-        
+
         return filepath

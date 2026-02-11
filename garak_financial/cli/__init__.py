@@ -5,54 +5,28 @@ Provides a command-line interface for running assessments against
 OpenAI-compatible model endpoints with full buff support.
 """
 
-import os
-import sys
 import logging
+import sys
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
 import click
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn
-from rich.table import Table
 from rich.panel import Panel
-
-from garak_financial.utils import SecureLLMClient, LLMClientError, mask_url
-from garak_financial.judges.financial import FinancialJudge, HybridJudge
-from garak_financial.reporting import (
-    ResultAggregator,
-    ReportGenerator,
-)
-
-# Import probes
-from garak_financial.probes import (
-    Impartiality,
-    Misconduct,
-    Disclosure,
-    Hallucination,
-    Compliance,
-    Calculation,
-    Leakage,
-    Sycophancy,
-)
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 # Import buffs
 from garak_financial.buffs.encoding import (
     Base64Buff,
-    ROT13Buff,
     LeetSpeakBuff,
-    UnicodeHomoglyphBuff,
     MixedCaseBuff,
-)
-from garak_financial.buffs.persona import (
-    PersonaVariationBuff,
-    RolePlayBuff,
-    UrgencyBuff,
+    ROT13Buff,
+    UnicodeHomoglyphBuff,
 )
 from garak_financial.buffs.financial import (
-    FinancialEntityBuff,
     AmountVariationBuff,
+    FinancialEntityBuff,
     TimeframeVariationBuff,
 )
 from garak_financial.buffs.jailbreak import (
@@ -61,6 +35,29 @@ from garak_financial.buffs.jailbreak import (
     MultiTurnJailbreakBuff,
     ObfuscatedJailbreakBuff,
 )
+from garak_financial.buffs.persona import (
+    PersonaVariationBuff,
+    RolePlayBuff,
+    UrgencyBuff,
+)
+from garak_financial.judges.financial import FinancialJudge, HybridJudge
+
+# Import probes
+from garak_financial.probes import (
+    Calculation,
+    Compliance,
+    Disclosure,
+    Hallucination,
+    Impartiality,
+    Leakage,
+    Misconduct,
+    Sycophancy,
+)
+from garak_financial.reporting import (
+    ReportGenerator,
+    ResultAggregator,
+)
+from garak_financial.utils import LLMClientError, SecureLLMClient, mask_url
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -123,11 +120,11 @@ def setup_logging(verbose: bool) -> None:
 def apply_buffs(prompt: str, buff_instances: list) -> list[tuple[str, str]]:
     """
     Apply buffs to a prompt and return augmented versions.
-    
+
     Returns list of (augmented_prompt, buff_name) tuples.
     """
     results = [(prompt, "original")]
-    
+
     for buff in buff_instances:
         try:
             # Each buff's transform method returns a list of augmented prompts
@@ -138,7 +135,7 @@ def apply_buffs(prompt: str, buff_instances: list) -> list[tuple[str, str]]:
                     results.append((aug_prompt, buff_name))
         except Exception as e:
             logger.warning(f"Buff {buff.__class__.__name__} failed: {e}")
-    
+
     return results
 
 
@@ -201,7 +198,8 @@ def apply_buffs(prompt: str, buff_instances: list) -> list[tuple[str, str]]:
 @click.option(
     "--batch",
     is_flag=True,
-    help="Batch mode: collect all target responses first, then judge. Much faster for local models.",
+    help="Batch mode: collect all target responses first, then judge."
+    " Much faster for local models.",
 )
 def main(
     target_url: str,
@@ -218,24 +216,25 @@ def main(
 ) -> None:
     """
     Run financial security assessment against an LLM endpoint.
-    
+
     This tool evaluates LLM responses for financial compliance concerns
     using probes, prompt augmentation (buffs), and LLM-as-judge evaluation.
-    
+
     \b
     Examples:
       # Basic assessment (no buffs)
       garak-financial-assess --target-url https://api.example.com/v1 --target-model llama-3.1-70b
-    
+
       # With standard buffs (~10x prompts)
       garak-financial-assess --target-url ... --target-model ... --buffs standard
-    
+
       # Full assessment with all buffs (~50x prompts)
       garak-financial-assess --target-url ... --target-model ... --buffs full
-    
+
       # Custom buff selection
-      garak-financial-assess --target-url ... --target-model ... --buffs base64,persona,jailbreak_prefix
-    
+      garak-financial-assess --target-url ... --target-model ... \
+        --buffs base64,persona,jailbreak_prefix
+
     \b
     Buff Presets:
       none      No augmentation (base prompts only)
@@ -244,7 +243,7 @@ def main(
       full      All buffs (~50x)
       encoding  All encoding buffs
       jailbreak All jailbreak buffs
-    
+
     \b
     Available Buffs:
       Encoding:  base64, rot13, leetspeak, homoglyph, mixedcase
@@ -253,11 +252,11 @@ def main(
       Jailbreak: jailbreak_prefix, jailbreak_suffix, multiturn, obfuscated
     """
     setup_logging(verbose)
-    
+
     # Use target as judge if not specified
     judge_url = judge_url or target_url
     judge_model = judge_model or target_model
-    
+
     # Parse probe selection
     if probes.lower() == "all":
         selected_probes = list(PROBES.keys())
@@ -268,10 +267,10 @@ def main(
             console.print(f"[red]Invalid probe categories: {invalid}[/red]")
             console.print(f"[yellow]Available: {list(PROBES.keys())}[/yellow]")
             sys.exit(1)
-    
+
     # Parse buff selection
     selected_buffs = _parse_buff_selection(buff_selection)
-    
+
     # Display configuration
     _display_config(
         target_url, target_model,
@@ -279,11 +278,11 @@ def main(
         selected_probes, selected_buffs,
         output_dir,
     )
-    
+
     if dry_run:
         _display_dry_run(selected_probes, selected_buffs)
         return
-    
+
     # Run assessment
     try:
         _run_assessment(
@@ -310,11 +309,11 @@ def main(
 def _parse_buff_selection(buff_selection: str) -> list[str]:
     """Parse buff selection string into list of buff names."""
     buff_selection = buff_selection.lower().strip()
-    
+
     # Check for preset
     if buff_selection in BUFF_PRESETS:
         return BUFF_PRESETS[buff_selection]
-    
+
     # Parse comma-separated list
     selected = [b.strip() for b in buff_selection.split(",")]
     invalid = set(selected) - set(BUFFS.keys())
@@ -323,7 +322,7 @@ def _parse_buff_selection(buff_selection: str) -> list[str]:
         console.print(f"[yellow]Available: {list(BUFFS.keys())}[/yellow]")
         console.print(f"[yellow]Presets: {list(BUFF_PRESETS.keys())}[/yellow]")
         sys.exit(1)
-    
+
     return selected
 
 
@@ -340,7 +339,7 @@ def _display_config(
     table = Table(title="Assessment Configuration")
     table.add_column("Setting", style="cyan")
     table.add_column("Value", style="green")
-    
+
     table.add_row("Target Endpoint", mask_url(target_url))
     table.add_row("Target Model", target_model)
     table.add_row("Judge Endpoint", mask_url(judge_url))
@@ -348,7 +347,7 @@ def _display_config(
     table.add_row("Probes", ", ".join(probes))
     table.add_row("Buffs", ", ".join(buffs) if buffs else "none")
     table.add_row("Output Directory", output_dir)
-    
+
     console.print(table)
     console.print()
 
@@ -356,16 +355,16 @@ def _display_config(
 def _display_dry_run(probes: list[str], buffs: list[str]) -> None:
     """Display what would be tested in dry run."""
     base_prompts = 0
-    
+
     # Count base prompts
     for probe_id in probes:
         probe_class = PROBES[probe_id]
         probe = probe_class()
         base_prompts += len(probe.prompts)
-    
+
     # Estimate augmented prompts
     buff_instances = [BUFFS[b]() for b in buffs]
-    
+
     # Estimate multiplier (rough)
     multiplier = 1
     for buff in buff_instances:
@@ -375,31 +374,31 @@ def _display_dry_run(probes: list[str], buffs: list[str]) -> None:
             multiplier += len(buff.templates)
         else:
             multiplier += 2  # Default estimate
-    
+
     total_prompts = base_prompts * max(1, multiplier // 2)  # Conservative estimate
-    
+
     table = Table(title="Dry Run - Assessment Summary")
     table.add_column("Metric", style="cyan")
     table.add_column("Value", justify="right", style="green")
-    
+
     table.add_row("Base Prompts", str(base_prompts))
     table.add_row("Buffs Applied", str(len(buffs)))
     table.add_row("Estimated Total", f"~{total_prompts}")
     table.add_row("", "")
-    
+
     # Breakdown by probe
     for probe_id in probes:
         probe_class = PROBES[probe_id]
         probe = probe_class()
         table.add_row(f"  {probe_id}", str(len(probe.prompts)))
-    
+
     console.print(table)
-    
+
     if buffs:
         console.print("\n[cyan]Buffs to apply:[/cyan]")
         for buff in buffs:
             console.print(f"  • {buff}")
-    
+
     console.print("\n[yellow]Dry run complete. No API calls were made.[/yellow]")
 
 
@@ -415,31 +414,31 @@ def _run_assessment(
     batch_mode: bool = False,
 ) -> None:
     """Run the full assessment with buff support."""
-    
+
     # Initialize clients
     console.print("[cyan]Initializing LLM clients...[/cyan]")
-    
+
     target_client = SecureLLMClient(
         base_url=target_url,
         api_key_env_var="TARGET_API_KEY",
     )
-    
+
     judge_client = SecureLLMClient(
         base_url=judge_url,
         api_key_env_var="JUDGE_API_KEY",
     )
-    
+
     # Initialize judge
     llm_judge = FinancialJudge(
         client=judge_client,
         model=judge_model,
     )
-    
+
     hybrid_judge = HybridJudge(llm_judge=llm_judge)
-    
+
     # Initialize buff instances
     buff_instances = [BUFFS[b]() for b in selected_buffs]
-    
+
     # Initialize aggregator
     aggregator = ResultAggregator(
         model_name=target_model,
@@ -447,15 +446,15 @@ def _run_assessment(
         judge_model=judge_model,
     )
     aggregator.result.buffs_used = selected_buffs
-    
+
     # Collect all prompts with augmentation
     console.print("[cyan]Preparing prompts...[/cyan]")
     all_prompts = []  # (probe_id, prompt, buff_name)
-    
+
     for probe_id in selected_probes:
         probe_class = PROBES[probe_id]
         probe = probe_class()
-        
+
         for base_prompt in probe.prompts:
             if buff_instances:
                 # Apply buffs
@@ -465,19 +464,29 @@ def _run_assessment(
             else:
                 # No buffs, just base prompt
                 all_prompts.append((probe_id, base_prompt, "original"))
-    
+
     aggregator.result.base_prompts = sum(
         len(PROBES[p]().prompts) for p in selected_probes
     )
-    
+
     # Apply max_prompts limit
     if max_prompts and len(all_prompts) > max_prompts:
-        console.print(f"[yellow]Limiting to {max_prompts} prompts (from {len(all_prompts)})[/yellow]")
+        console.print(
+            f"[yellow]Limiting to {max_prompts} prompts"
+            f" (from {len(all_prompts)})[/yellow]"
+        )
         all_prompts = all_prompts[:max_prompts]
-    
-    console.print(f"[green]Total prompts to test: {len(all_prompts)}[/green]")
-    console.print(f"[dim](Base: {aggregator.result.base_prompts}, Augmented: {len(all_prompts) - aggregator.result.base_prompts})[/dim]")
-    
+
+    console.print(
+        f"[green]Total prompts to test:"
+        f" {len(all_prompts)}[/green]"
+    )
+    aug_count = len(all_prompts) - aggregator.result.base_prompts
+    console.print(
+        f"[dim](Base: {aggregator.result.base_prompts},"
+        f" Augmented: {aug_count})[/dim]"
+    )
+
     if batch_mode:
         console.print("[cyan]⚡ Batch mode: collecting all responses first, then judging[/cyan]\n")
         _run_batch_assessment(
@@ -490,20 +499,20 @@ def _run_assessment(
             all_prompts, target_client, target_model,
             hybrid_judge, aggregator,
         )
-    
+
     # Finalize and generate report
     result = aggregator.finalize()
     generator = ReportGenerator(result)
-    
+
     # Save reports
     console.print("\n[cyan]Generating reports...[/cyan]")
-    
+
     md_path = generator.save(output_dir)
     json_path = generator.save_json(output_dir)
-    
+
     # Display summary
     _display_summary(result, md_path, json_path)
-    
+
     # Cleanup
     target_client.close()
     judge_client.close()
@@ -526,33 +535,33 @@ def _run_interleaved_assessment(
         console=console,
     ) as progress:
         task = progress.add_task("Assessing...", total=len(all_prompts))
-        
+
         for probe_id, prompt, buff_name in all_prompts:
             progress.update(task, description=f"{probe_id} [{buff_name}]")
-            
+
             try:
                 response = target_client.chat_completion(
                     messages=[{"role": "user", "content": prompt}],
                     model=target_model,
                 )
-                
+
                 judgment = hybrid_judge.evaluate(
                     prompt=prompt,
                     response=response.content,
                     category=probe_id,
                 )
-                
+
                 aggregator.add_judgment(
                     category=probe_id,
                     prompt=prompt,
                     response=response.content,
                     judgment=judgment,
                 )
-                
+
             except LLMClientError as e:
                 logger.warning(f"Error on prompt: {e}")
                 aggregator.result.errors.append(str(e))
-            
+
             progress.advance(task)
 
 
@@ -565,13 +574,13 @@ def _run_batch_assessment(
 ) -> None:
     """
     Batch mode: collect ALL target responses first, then judge ALL at once.
-    
+
     This avoids constant model swapping when target and judge run on the
     same local endpoint (e.g., Ollama), dramatically reducing total time.
     """
     # Phase 1: Collect all target responses
     collected = []  # (probe_id, prompt, buff_name, response_text)
-    
+
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
@@ -583,25 +592,25 @@ def _run_batch_assessment(
         task = progress.add_task(
             "Phase 1: Target responses", total=len(all_prompts),
         )
-        
+
         for probe_id, prompt, buff_name in all_prompts:
             progress.update(task, description=f"Phase 1: {probe_id} [{buff_name}]")
-            
+
             try:
                 response = target_client.chat_completion(
                     messages=[{"role": "user", "content": prompt}],
                     model=target_model,
                 )
                 collected.append((probe_id, prompt, buff_name, response.content))
-                
+
             except LLMClientError as e:
                 logger.warning(f"Error on prompt: {e}")
                 aggregator.result.errors.append(str(e))
-            
+
             progress.advance(task)
-    
+
     console.print(f"[green]✓ Collected {len(collected)} responses[/green]\n")
-    
+
     # Phase 2: Judge all responses
     with Progress(
         SpinnerColumn(),
@@ -614,43 +623,43 @@ def _run_batch_assessment(
         task = progress.add_task(
             "Phase 2: Judging", total=len(collected),
         )
-        
+
         for probe_id, prompt, buff_name, response_text in collected:
             progress.update(task, description=f"Phase 2: {probe_id} [{buff_name}]")
-            
+
             try:
                 judgment = hybrid_judge.evaluate(
                     prompt=prompt,
                     response=response_text,
                     category=probe_id,
                 )
-                
+
                 aggregator.add_judgment(
                     category=probe_id,
                     prompt=prompt,
                     response=response_text,
                     judgment=judgment,
                 )
-                
+
             except LLMClientError as e:
                 logger.warning(f"Error judging: {e}")
                 aggregator.result.errors.append(str(e))
-            
+
             progress.advance(task)
-    
+
     console.print(f"[green]✓ Judged {len(collected)} responses[/green]")
 
 
 def _display_summary(result, md_path: Path, json_path: Path) -> None:
     """Display assessment summary."""
     console.print()
-    
+
     # Calculate augmentation
     if result.base_prompts > 0:
         aug_factor = result.total_prompts / result.base_prompts
     else:
         aug_factor = 1.0
-    
+
     # Summary panel
     summary = f"""
 [bold]Assessment Complete[/bold]
@@ -666,14 +675,14 @@ Overall Mean Concern: {result.overall_mean_score:.2f}
   JSON: {json_path}
 """
     console.print(Panel(summary, title="Summary", border_style="green"))
-    
+
     # Category breakdown
     table = Table(title="Results by Category")
     table.add_column("Category", style="cyan")
     table.add_column("Tested", justify="right")
     table.add_column("Mean Score", justify="right")
     table.add_column("High Concern", justify="right")
-    
+
     for cat_id, cat in sorted(
         result.categories.items(),
         key=lambda x: x[1].mean_score,
@@ -687,10 +696,10 @@ Overall Mean Concern: {result.overall_mean_score:.2f}
             score_str = f"[yellow]{score:.2f}[/yellow]"
         else:
             score_str = f"[red]{score:.2f}[/red]"
-        
+
         high_pct = f"{cat.high_concern_count} ({cat.high_concern_pct:.0f}%)"
         table.add_row(cat_id, str(cat.total_prompts), score_str, high_pct)
-    
+
     console.print(table)
 
 

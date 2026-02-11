@@ -14,12 +14,10 @@ Usage:
         --output-dir ./reviews
 """
 
-import os
-import sys
 import json
 import subprocess
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 import click
@@ -67,16 +65,16 @@ def main(
 ):
     """
     Run complete automated security review of an LLM.
-    
+
     This runs both Garak general safety probes and financial-specific
     probes with LLM-as-judge, then generates a consolidated report.
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     safe_model = "".join(c if c.isalnum() else "_" for c in target_model)
-    
+
     console.print(Panel(
         f"[bold]Automated LLM Security Review[/bold]\n\n"
         f"Model: {target_model}\n"
@@ -84,7 +82,7 @@ def main(
         f"Output: {output_path}",
         title="Starting Review"
     ))
-    
+
     results = {
         "model": target_model,
         "endpoint": target_url,
@@ -92,7 +90,7 @@ def main(
         "garak": None,
         "financial": None,
     }
-    
+
     # Step 1: Run Garak general probes
     if not skip_garak:
         console.print("\n[cyan]Step 1/3: Running Garak general safety probes...[/cyan]")
@@ -100,7 +98,7 @@ def main(
         results["garak"] = garak_result
     else:
         console.print("\n[yellow]Step 1/3: Skipping Garak (--skip-garak)[/yellow]")
-    
+
     # Step 2: Run financial probes
     if not skip_financial:
         console.print("\n[cyan]Step 2/3: Running financial probes with LLM-as-judge...[/cyan]")
@@ -112,11 +110,11 @@ def main(
         results["financial"] = financial_result
     else:
         console.print("\n[yellow]Step 2/3: Skipping financial (--skip-financial)[/yellow]")
-    
+
     # Step 3: Generate consolidated report
     console.print("\n[cyan]Step 3/3: Generating consolidated report...[/cyan]")
     report_path = _generate_consolidated_report(results, output_path, safe_model, timestamp)
-    
+
     # Summary
     _display_summary(results, report_path)
 
@@ -124,11 +122,11 @@ def main(
 def _run_garak(target_url: str, target_model: str, output_path: Path) -> dict:
     """Run Garak general safety probes."""
     probes_str = ",".join(GARAK_PROBES)
-    
+
     # Garak outputs to its own directory
     garak_output = output_path / "garak_output"
     garak_output.mkdir(exist_ok=True)
-    
+
     cmd = [
         "garak",
         "--model_type", "rest",
@@ -136,7 +134,7 @@ def _run_garak(target_url: str, target_model: str, output_path: Path) -> dict:
         "--probes", probes_str,
         "--report_prefix", str(garak_output / "garak"),
     ]
-    
+
     try:
         result = subprocess.run(
             cmd,
@@ -144,7 +142,7 @@ def _run_garak(target_url: str, target_model: str, output_path: Path) -> dict:
             text=True,
             timeout=3600,  # 1 hour max
         )
-        
+
         # Parse Garak output
         return {
             "status": "completed" if result.returncode == 0 else "failed",
@@ -169,44 +167,45 @@ def _run_financial(
     max_prompts: Optional[int],
 ) -> dict:
     """Run financial probes with LLM-as-judge."""
-    from garak_financial.cli import main as cli_main
     from click.testing import CliRunner
-    
+
+    from garak_financial.cli import main as cli_main
+
     runner = CliRunner()
-    
+
     args = [
         "--target-url", target_url,
         "--target-model", target_model,
         "--buffs", buffs,
         "--output-dir", str(output_path / "financial_output"),
     ]
-    
+
     if judge_url:
         args.extend(["--judge-url", judge_url])
     if judge_model:
         args.extend(["--judge-model", judge_model])
     if max_prompts:
         args.extend(["--max-prompts", str(max_prompts)])
-    
+
     result = runner.invoke(cli_main, args)
-    
+
     # Find the generated report
     financial_output = output_path / "financial_output"
     md_files = list(financial_output.glob("assessment_*.md"))
     json_files = list(financial_output.glob("results_*.json"))
-    
+
     financial_result = {
         "status": "completed" if result.exit_code == 0 else "failed",
         "exit_code": result.exit_code,
         "report_path": str(md_files[0]) if md_files else None,
         "json_path": str(json_files[0]) if json_files else None,
     }
-    
+
     # Load JSON results if available
     if json_files:
         with open(json_files[0]) as f:
             financial_result["data"] = json.load(f)
-    
+
     return financial_result
 
 
@@ -217,7 +216,7 @@ def _generate_consolidated_report(
     timestamp: str,
 ) -> Path:
     """Generate consolidated markdown report."""
-    
+
     report_lines = [
         f"# LLM Security Review: {results['model']}",
         "",
@@ -229,17 +228,17 @@ def _generate_consolidated_report(
         "## Executive Summary",
         "",
     ]
-    
+
     # Determine overall status
     issues = []
-    
+
     if results["garak"]:
         if results["garak"]["status"] == "completed":
             report_lines.append("✅ **General Safety**: Garak probes completed")
         else:
             report_lines.append(f"⚠️ **General Safety**: {results['garak']['status']}")
             issues.append("Garak probes did not complete successfully")
-    
+
     if results["financial"]:
         if results["financial"]["status"] == "completed":
             data = results["financial"].get("data", {})
@@ -255,13 +254,13 @@ def _generate_consolidated_report(
         else:
             report_lines.append(f"⚠️ **Financial Risks**: {results['financial']['status']}")
             issues.append("Financial assessment did not complete")
-    
+
     report_lines.extend([
         "",
         "### Recommendation",
         "",
     ])
-    
+
     if not issues:
         report_lines.append("**✅ APPROVE** - No significant issues detected")
     elif len(issues) <= 2 and all("Moderate" in i or "warning" in i.lower() for i in issues):
@@ -274,7 +273,7 @@ def _generate_consolidated_report(
         report_lines.append("")
         for issue in issues:
             report_lines.append(f"- {issue}")
-    
+
     # Garak details
     report_lines.extend([
         "",
@@ -283,7 +282,7 @@ def _generate_consolidated_report(
         "## General Safety (Garak)",
         "",
     ])
-    
+
     if results["garak"]:
         report_lines.append(f"**Status**: {results['garak']['status']}")
         report_lines.append(f"**Probes Run**: {', '.join(results['garak'].get('probes_run', []))}")
@@ -291,7 +290,7 @@ def _generate_consolidated_report(
             report_lines.append(f"**Full Report**: `{results['garak']['output_dir']}`")
     else:
         report_lines.append("*Skipped*")
-    
+
     # Financial details
     report_lines.extend([
         "",
@@ -300,10 +299,10 @@ def _generate_consolidated_report(
         "## Financial Risks (LLM-as-Judge)",
         "",
     ])
-    
+
     if results["financial"] and results["financial"].get("data"):
         data = results["financial"]["data"]
-        
+
         # Summary table
         report_lines.extend([
             "| Metric | Value |",
@@ -313,7 +312,7 @@ def _generate_consolidated_report(
             f"| Judge Model | {data.get('judge_model', 'N/A')} |",
             "",
         ])
-        
+
         # Category breakdown
         if data.get("categories"):
             report_lines.extend([
@@ -322,21 +321,25 @@ def _generate_consolidated_report(
                 "| Category | Mean | High Concern |",
                 "|----------|------|--------------|",
             ])
-            
+
             for cat_id, cat in data["categories"].items():
                 mean = cat.get("mean_score", 0)
                 high = cat.get("high_concern_count", 0)
                 high_pct = cat.get("high_concern_pct", 0)
                 report_lines.append(f"| {cat_id} | {mean:.2f} | {high} ({high_pct:.0f}%) |")
-        
+
         if results["financial"].get("report_path"):
+            report_name = Path(
+                results['financial']['report_path']
+            ).name
+            report_path = results['financial']['report_path']
             report_lines.extend([
                 "",
-                f"**Full Report**: [{Path(results['financial']['report_path']).name}]({results['financial']['report_path']})",
+                f"**Full Report**: [{report_name}]({report_path})",
             ])
     else:
         report_lines.append("*Skipped or failed*")
-    
+
     # Methodology
     report_lines.extend([
         "",
@@ -358,36 +361,36 @@ def _generate_consolidated_report(
         "",
         "---",
         "",
-        f"*Generated by garak-financial-probes automated review*",
+        "*Generated by garak-financial-probes automated review*",
     ])
-    
+
     # Write report
     report_path = output_path / f"security_review_{safe_model}_{timestamp}.md"
     report_path.write_text("\n".join(report_lines), encoding="utf-8")
-    
+
     return report_path
 
 
 def _display_summary(results: dict, report_path: Path) -> None:
     """Display final summary."""
     console.print()
-    
+
     table = Table(title="Review Complete")
     table.add_column("Component", style="cyan")
     table.add_column("Status", style="green")
-    
+
     if results["garak"]:
         status = results["garak"]["status"]
         color = "green" if status == "completed" else "yellow"
         table.add_row("Garak General Safety", f"[{color}]{status}[/{color}]")
-    
+
     if results["financial"]:
         status = results["financial"]["status"]
         color = "green" if status == "completed" else "yellow"
         table.add_row("Financial Assessment", f"[{color}]{status}[/{color}]")
-    
+
     console.print(table)
-    
+
     console.print(Panel(
         f"[bold green]Consolidated report saved:[/bold green]\n\n"
         f"{report_path}\n\n"

@@ -3,14 +3,15 @@ Tests for financial probes.
 """
 
 import pytest
+
 from garak_financial.probes import (
-    Impartiality,
-    Misconduct,
+    Calculation,
+    Compliance,
     Disclosure,
     Hallucination,
-    Compliance,
-    Calculation,
+    Impartiality,
     Leakage,
+    Misconduct,
     Sycophancy,
 )
 
@@ -34,7 +35,7 @@ class TestProbeStructure:
     def test_probes_have_required_attributes(self, probes):
         """All probes must have required Garak attributes."""
         required_attrs = ["bcp47", "goal", "prompts", "tags"]
-        
+
         for probe in probes:
             for attr in required_attrs:
                 assert hasattr(probe, attr), f"{probe.__class__.__name__} missing {attr}"
@@ -57,7 +58,7 @@ class TestImpartialityProbe:
         """Prompts should cover major financial advice categories."""
         probe = Impartiality()
         prompts_text = " ".join(probe.prompts).lower()
-        
+
         # Should cover these categories
         assert "invest" in prompts_text
         assert "buy" in prompts_text or "sell" in prompts_text
@@ -78,7 +79,7 @@ class TestMisconductProbe:
         """Prompts should cover major misconduct categories."""
         probe = Misconduct()
         prompts_text = " ".join(probe.prompts).lower()
-        
+
         # Should cover these categories
         assert "insider" in prompts_text or "non-public" in prompts_text
         assert "manipulate" in prompts_text or "pump" in prompts_text
@@ -92,7 +93,7 @@ class TestComplianceProbe:
         """Prompts should cover major compliance categories."""
         probe = Compliance()
         prompts_text = " ".join(probe.prompts).lower()
-        
+
         # Should cover reporting, registration, KYC
         assert "report" in prompts_text
         assert "register" in prompts_text or "license" in prompts_text
@@ -106,7 +107,7 @@ class TestHallucinationProbe:
         """Prompts should request specific data that could be hallucinated."""
         probe = Hallucination()
         prompts_text = " ".join(probe.prompts).lower()
-        
+
         # Should ask for specific potentially hallucinated data
         assert "price" in prompts_text
         assert any(q in prompts_text for q in ["what is", "tell me", "give me"])
@@ -119,11 +120,11 @@ class TestSycophancyProbe:
         """Prompts should present risky decisions seeking validation."""
         probe = Sycophancy()
         prompts_text = " ".join(probe.prompts).lower()
-        
+
         # Should mention risky behaviors
         risky_terms = ["leverage", "all", "entire", "retirement", "401k", "borrow"]
         assert any(term in prompts_text for term in risky_terms)
-        
+
         # Should seek agreement
         assert "right" in prompts_text or "agree" in prompts_text
 
