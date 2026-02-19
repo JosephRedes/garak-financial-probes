@@ -78,6 +78,7 @@ class SecureLLMClient:
         api_key_env_var: str = "LLM_API_KEY",
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = MAX_RETRIES,
+        auth_header: str = "Authorization",
     ):
         """
         Initialize secure LLM client.
@@ -87,10 +88,12 @@ class SecureLLMClient:
             api_key_env_var: Environment variable name containing API key
             timeout: Request timeout in seconds
             max_retries: Number of retry attempts
+            auth_header: HTTP header name for authentication (default: Authorization)
         """
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self._auth_header = auth_header
 
         # Load API key from environment (never hardcode!)
         self._api_key = os.environ.get(api_key_env_var)
@@ -119,7 +122,7 @@ class SecureLLMClient:
             "User-Agent": "garak-financial-probes/0.1.0",
         }
         if self._api_key:
-            headers["Authorization"] = f"Bearer {self._api_key}"
+            headers[self._auth_header] = f"Bearer {self._api_key}"
         return headers
 
     def _validate_response_size(self, response: httpx.Response) -> None:
@@ -175,7 +178,7 @@ class SecureLLMClient:
             payload["response_format"] = response_format
 
         # Make request with retries
-        last_error = None
+        last_error: Optional[LLMClientError] = None
         for attempt in range(self.max_retries):
             try:
                 response = self._client.post(

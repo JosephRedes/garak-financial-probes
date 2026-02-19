@@ -11,6 +11,7 @@ from garak_financial.reporting import (
     ReportGenerator,
     ResultAggregator,
 )
+from garak_financial.utils import mask_url
 
 
 class TestCategoryResult:
@@ -120,15 +121,7 @@ class TestReportGenerator:
         assert "Investment Advice Impartiality" in markdown
 
     def test_endpoint_masking(self):
-        result = AssessmentResult(
-            model_name="test",
-            endpoint="http://internal.company.com/v1/chat/completions",
-            assessment_date=datetime.now(),
-            judge_model="judge",
-        )
-
-        generator = ReportGenerator(result)
-        masked = generator._mask_endpoint(result.endpoint)
+        masked = mask_url("http://internal.company.com/v1/chat/completions")
 
         assert "internal.company.com" in masked
         assert "chat/completions" not in masked
@@ -160,3 +153,122 @@ class TestReportGenerator:
 
         assert filepath.exists()
         assert filepath.suffix == ".json"
+
+
+def _make_result_with_scores(mean: float = 0.3, max_score: float = 0.6) -> AssessmentResult:
+    """Helper: create an AssessmentResult with one category."""
+    result = AssessmentResult(
+        model_name="test-model",
+        endpoint="http://api.test.com/v1",
+        assessment_date=datetime.now(),
+        judge_model="judge-model",
+        total_prompts=10,
+        base_prompts=10,
+    )
+    cat = CategoryResult(category="impartiality")
+    cat.total_prompts = 10
+    n = 10
+    high_n = round(max_score * n)
+    low_n = n - high_n
+    cat.scores = [mean] * low_n + [max_score] * high_n
+    result.categories["impartiality"] = cat
+    return result
+
+
+class TestHTMLReportGenerator:
+    """Tests for HTML report generation."""
+
+    def test_generate_html_returns_string(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        html = generator.generate_html()
+        assert isinstance(html, str)
+
+    def test_generate_html_contains_model_name(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        html = generator.generate_html()
+        assert "test-model" in html
+
+    def test_generate_html_is_self_contained(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        html = generator.generate_html()
+        # Should have inline CSS, no external stylesheet links
+        assert "<style>" in html
+        assert "<link rel=" not in html
+
+    def test_generate_html_contains_verdict(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        html = generator.generate_html()
+        # Verdict badge should appear somewhere
+        assert any(v in html for v in ["APPROVE", "CONDITIONAL", "RECOMMEND AGAINST"])
+
+    def test_save_html_creates_file(self, tmp_path):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        filepath = generator.save_html(tmp_path)
+        assert filepath.exists()
+        assert filepath.suffix == ".html"
+
+    def test_save_html_content_is_html(self, tmp_path):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        filepath = generator.save_html(tmp_path)
+        content = filepath.read_text(encoding="utf-8")
+        assert "<!DOCTYPE html>" in content
+
+    def test_html_escapes_model_name(self):
+        result = AssessmentResult(
+            model_name="<script>alert('xss')</script>",
+            endpoint="http://test",
+            assessment_date=datetime.now(),
+            judge_model="judge",
+        )
+        generator = ReportGenerator(result)
+        html = generator.generate_html()
+        assert "<script>alert" not in html
+        assert "&lt;script&gt;" in html
+
+
+class TestComputeVerdict:
+    """Tests for _compute_verdict thresholds."""
+
+    def _generator_with_mean_max(self, mean: float, max_score: float) -> ReportGenerator:
+        result = _make_result_with_scores(mean=mean, max_score=max_score)
+        return ReportGenerator(result)
+
+    def test_approve_verdict_low_scores(self):
+        gen = self._generator_with_mean_max(mean=0.1, max_score=0.3)
+        label, css_class, _ = gen._compute_verdict()
+        assert label == "APPROVE"
+        assert css_class == "approve"
+
+    def test_conditional_verdict_mid_scores(self):
+        gen = self._generator_with_mean_max(mean=0.35, max_score=0.55)
+        label, css_class, _ = gen._compute_verdict()
+        assert label == "CONDITIONAL REVIEW"
+        assert css_class == "conditional"
+
+    def test_deny_verdict_high_scores(self):
+        gen = self._generator_with_mean_max(mean=0.7, max_score=0.9)
+        label, css_class, _ = gen._compute_verdict()
+        assert label == "RECOMMEND AGAINST"
+        assert css_class == "deny"
+
+
+class TestExecutiveSummary:
+    """Tests for executive summary in markdown report."""
+
+    def test_executive_summary_in_markdown(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        md = generator.generate()
+        assert "Executive Summary" in md
+
+    def test_executive_summary_contains_verdict(self):
+        result = _make_result_with_scores()
+        generator = ReportGenerator(result)
+        md = generator.generate()
+        assert any(v in md for v in ["APPROVE", "CONDITIONAL", "RECOMMEND AGAINST"])

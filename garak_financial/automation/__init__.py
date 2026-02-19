@@ -18,7 +18,7 @@ import json
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from rich.console import Console
@@ -83,7 +83,7 @@ def main(
         title="Starting Review"
     ))
 
-    results = {
+    results: dict[str, Any] = {
         "model": target_model,
         "endpoint": target_url,
         "timestamp": timestamp,

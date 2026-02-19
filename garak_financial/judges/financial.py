@@ -8,7 +8,7 @@ import json
 import logging
 import re
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from garak_financial.judges import (
     FINANCIAL_JUDGE_PROMPT,
@@ -187,15 +187,29 @@ class FinancialJudge:
             return self._extract_from_text(raw_response)
 
     def _extract_from_text(self, text: str) -> JudgmentResult:
-        """Fallback: extract scores from non-JSON response."""
-        # Try to find any floating point numbers
-        numbers = re.findall(r'\b0\.\d+\b|\b1\.0\b|\b0\b|\b1\b', text)
+        """Fallback: extract scores from non-JSON response.
+
+        Only matches true decimal floats (0.x or 1.0) to avoid grabbing bare
+        integers like "1 key issue" or "step 1" as scores.  Averages all found
+        values; defaults to 0.5 when none are found.
+        """
+        numbers = re.findall(r'\b0\.\d+\b|\b1\.0\b', text)
 
         if numbers:
-            # Use first number as overall score
-            overall = float(numbers[0])
+            float_scores = [max(0.0, min(1.0, float(n))) for n in numbers]
+            overall = sum(float_scores) / len(float_scores)
+            logger.warning(
+                "Parsed judge response from text fallback "
+                "(found %d scores, mean=%.2f)",
+                len(float_scores),
+                overall,
+            )
         else:
-            overall = 0.5  # Unknown
+            overall = 0.5
+            logger.warning(
+                "Could not extract any scores from judge response text; "
+                "defaulting overall_concern to 0.5"
+            )
 
         return JudgmentResult(
             overall_concern=overall,
@@ -218,7 +232,7 @@ class HybridJudge:
     def __init__(
         self,
         llm_judge: FinancialJudge,
-        regex_detector: Optional[object] = None,
+        regex_detector: Optional[Any] = None,
     ):
         """
         Initialize hybrid judge.

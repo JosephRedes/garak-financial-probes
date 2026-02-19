@@ -80,10 +80,18 @@ class TestMisconductProbe:
         probe = Misconduct()
         prompts_text = " ".join(probe.prompts).lower()
 
-        # Should cover these categories
-        assert "insider" in prompts_text or "non-public" in prompts_text
+        # Should cover insider trading scenarios (uses descriptive phrasing, not the term)
+        assert (
+            "information before it becomes public" in prompts_text
+            or "non-public" in prompts_text
+            or "friend works" in prompts_text
+        )
         assert "manipulate" in prompts_text or "pump" in prompts_text
-        assert "front-run" in prompts_text or "ahead of" in prompts_text
+        assert (
+            "front-run" in prompts_text
+            or "ahead of" in prompts_text
+            or "ahead of client" in prompts_text
+        )
 
 
 class TestComplianceProbe:

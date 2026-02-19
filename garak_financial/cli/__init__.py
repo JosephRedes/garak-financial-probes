@@ -8,7 +8,7 @@ OpenAI-compatible model endpoints with full buff support.
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional, cast
 
 import click
 from rich.console import Console
@@ -44,6 +44,11 @@ from garak_financial.judges.financial import FinancialJudge, HybridJudge
 
 # Import probes
 from garak_financial.probes import (
+    AdvancedCompliance,
+    AdvancedDisclosure,
+    AdvancedImpartiality,
+    AdvancedMisconduct,
+    AdvancedSycophancy,
     Calculation,
     Compliance,
     Disclosure,
@@ -65,13 +70,29 @@ logger = logging.getLogger(__name__)
 # Probe registry
 PROBES = {
     "impartiality": Impartiality,
+    "advanced-impartiality": AdvancedImpartiality,
     "misconduct": Misconduct,
+    "advanced-misconduct": AdvancedMisconduct,
     "disclosure": Disclosure,
+    "advanced-disclosure": AdvancedDisclosure,
     "hallucination": Hallucination,
     "compliance": Compliance,
+    "advanced-compliance": AdvancedCompliance,
     "calculation": Calculation,
     "leakage": Leakage,
     "sycophancy": Sycophancy,
+    "advanced-sycophancy": AdvancedSycophancy,
+}
+
+# Probe group aliases
+PROBE_GROUPS = {
+    "advanced": [
+        "advanced-impartiality",
+        "advanced-misconduct",
+        "advanced-disclosure",
+        "advanced-compliance",
+        "advanced-sycophancy",
+    ],
 }
 
 # Buff registry
@@ -201,6 +222,26 @@ def apply_buffs(prompt: str, buff_instances: list) -> list[tuple[str, str]]:
     help="Batch mode: collect all target responses first, then judge."
     " Much faster for local models.",
 )
+@click.option(
+    "--format",
+    "output_format",
+    type=click.Choice(["markdown", "html", "both"], case_sensitive=False),
+    default="markdown",
+    show_default=True,
+    help="Report output format: markdown, html, or both.",
+)
+@click.option(
+    "--auth-header",
+    default="Authorization",
+    show_default=True,
+    help="HTTP header name for API key authentication. "
+    "Both OpenAI and Vertex AI use the default 'Authorization' header.",
+)
+@click.option(
+    "--vertex-ai",
+    is_flag=True,
+    help="Print Vertex AI endpoint format guidance and exit.",
+)
 def main(
     target_url: str,
     target_model: str,
@@ -213,6 +254,9 @@ def main(
     verbose: bool,
     dry_run: bool,
     batch: bool,
+    output_format: str,
+    auth_header: str,
+    vertex_ai: bool,
 ) -> None:
     """
     Run financial security assessment against an LLM endpoint.
@@ -253,6 +297,27 @@ def main(
     """
     setup_logging(verbose)
 
+    if vertex_ai:
+        console.print(Panel(
+            "[bold cyan]Vertex AI Endpoint Format[/bold cyan]\n\n"
+            "Vertex AI exposes OpenAI-compatible endpoints. Use:\n\n"
+            "  [green]--target-url[/green]  https://LOCATION-aiplatform.googleapis.com/v1beta1/"
+            "projects/PROJECT_ID/locations/LOCATION/endpoints/openapi\n\n"
+            "Set your access token as the API key:\n"
+            "  [yellow]export TARGET_API_KEY=$(gcloud auth print-access-token)[/yellow]\n\n"
+            "Example:\n"
+            "  [dim]export TARGET_API_KEY=$(gcloud auth print-access-token)\n"
+            "  garak-financial-assess \\\n"
+            "    --target-url https://us-central1-aiplatform.googleapis.com/v1beta1/"
+            "projects/my-project/locations/us-central1/endpoints/openapi \\\n"
+            "    --target-model google/gemini-1.5-pro-002 \\\n"
+            "    --judge-url https://api.openai.com/v1 \\\n"
+            "    --judge-model gpt-4o[/dim]",
+            title="Vertex AI Setup",
+            border_style="cyan",
+        ))
+        return
+
     # Use target as judge if not specified
     judge_url = judge_url or target_url
     judge_model = judge_model or target_model
@@ -261,7 +326,14 @@ def main(
     if probes.lower() == "all":
         selected_probes = list(PROBES.keys())
     else:
-        selected_probes = [p.strip().lower() for p in probes.split(",")]
+        # Expand group aliases (e.g. "advanced" → all advanced-* probes)
+        raw = [p.strip().lower() for p in probes.split(",")]
+        selected_probes = []
+        for p in raw:
+            if p in PROBE_GROUPS:
+                selected_probes.extend(PROBE_GROUPS[p])
+            else:
+                selected_probes.append(p)
         invalid = set(selected_probes) - set(PROBES.keys())
         if invalid:
             console.print(f"[red]Invalid probe categories: {invalid}[/red]")
@@ -295,6 +367,8 @@ def main(
             output_dir=Path(output_dir),
             max_prompts=max_prompts,
             batch_mode=batch,
+            output_format=output_format,
+            auth_header=auth_header,
         )
     except LLMClientError as e:
         console.print(f"[red]LLM API Error: {e}[/red]")
@@ -359,7 +433,7 @@ def _display_dry_run(probes: list[str], buffs: list[str]) -> None:
     # Count base prompts
     for probe_id in probes:
         probe_class = PROBES[probe_id]
-        probe = probe_class()
+        probe = cast(Any, probe_class())
         base_prompts += len(probe.prompts)
 
     # Estimate augmented prompts
@@ -389,7 +463,7 @@ def _display_dry_run(probes: list[str], buffs: list[str]) -> None:
     # Breakdown by probe
     for probe_id in probes:
         probe_class = PROBES[probe_id]
-        probe = probe_class()
+        probe = cast(Any, probe_class())
         table.add_row(f"  {probe_id}", str(len(probe.prompts)))
 
     console.print(table)
@@ -412,6 +486,8 @@ def _run_assessment(
     output_dir: Path,
     max_prompts: Optional[int],
     batch_mode: bool = False,
+    output_format: str = "markdown",
+    auth_header: str = "Authorization",
 ) -> None:
     """Run the full assessment with buff support."""
 
@@ -421,11 +497,13 @@ def _run_assessment(
     target_client = SecureLLMClient(
         base_url=target_url,
         api_key_env_var="TARGET_API_KEY",
+        auth_header=auth_header,
     )
 
     judge_client = SecureLLMClient(
         base_url=judge_url,
         api_key_env_var="JUDGE_API_KEY",
+        auth_header=auth_header,
     )
 
     # Initialize judge
@@ -453,7 +531,7 @@ def _run_assessment(
 
     for probe_id in selected_probes:
         probe_class = PROBES[probe_id]
-        probe = probe_class()
+        probe = cast(Any, probe_class())
 
         for base_prompt in probe.prompts:
             if buff_instances:
@@ -466,7 +544,7 @@ def _run_assessment(
                 all_prompts.append((probe_id, base_prompt, "original"))
 
     aggregator.result.base_prompts = sum(
-        len(PROBES[p]().prompts) for p in selected_probes
+        len(cast(Any, PROBES[p]()).prompts) for p in selected_probes
     )
 
     # Apply max_prompts limit
@@ -506,12 +584,18 @@ def _run_assessment(
 
     # Save reports
     console.print("\n[cyan]Generating reports...[/cyan]")
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    md_path = generator.save(output_dir)
+    md_path = None
+    html_path = None
+    if output_format in ("markdown", "both"):
+        md_path = generator.save(output_dir)
+    if output_format in ("html", "both"):
+        html_path = generator.save_html(output_dir)
     json_path = generator.save_json(output_dir)
 
     # Display summary
-    _display_summary(result, md_path, json_path)
+    _display_summary(result, md_path=md_path, json_path=json_path, html_path=html_path)
 
     # Cleanup
     target_client.close()
@@ -650,7 +734,12 @@ def _run_batch_assessment(
     console.print(f"[green]✓ Judged {len(collected)} responses[/green]")
 
 
-def _display_summary(result, md_path: Path, json_path: Path) -> None:
+def _display_summary(
+    result,
+    md_path: Optional[Path],
+    json_path: Path,
+    html_path: Optional[Path] = None,
+) -> None:
     """Display assessment summary."""
     console.print()
 
@@ -659,6 +748,15 @@ def _display_summary(result, md_path: Path, json_path: Path) -> None:
         aug_factor = result.total_prompts / result.base_prompts
     else:
         aug_factor = 1.0
+
+    # Build report lines dynamically
+    report_lines = []
+    if md_path:
+        report_lines.append(f"  Markdown: {md_path}")
+    if html_path:
+        report_lines.append(f"  HTML:     {html_path}")
+    report_lines.append(f"  JSON:     {json_path}")
+    reports_section = "\n".join(report_lines)
 
     # Summary panel
     summary = f"""
@@ -671,8 +769,7 @@ Buffs Used: {', '.join(result.buffs_used) if result.buffs_used else 'none'}
 Overall Mean Concern: {result.overall_mean_score:.2f}
 
 [bold]Reports Saved:[/bold]
-  Markdown: {md_path}
-  JSON: {json_path}
+{reports_section}
 """
     console.print(Panel(summary, title="Summary", border_style="green"))
 
