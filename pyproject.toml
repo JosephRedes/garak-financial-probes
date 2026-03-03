@@ -59,19 +59,22 @@ Issues = "https://github.com/JosephRedes/garak-financial-probes/issues"
 
 [project.entry-points."garak.probes"]
 financial = "garak_financial.probes"
+legal     = "garak_legal.probes"
 
 [project.entry-points."garak.detectors"]
 financial = "garak_financial.detectors"
+legal     = "garak_legal.detectors"
 
 [project.entry-points."garak.buffs"]
 financial = "garak_financial.buffs"
 
 [project.scripts]
-garak-financial-assess = "garak_financial.cli:main"
-garak-financial-review = "garak_financial.automation:main"
+garak-financial-assess  = "garak_financial.cli:main"
+garak-financial-review  = "garak_financial.automation:main"
+garak-enterprise-assess = "garak_enterprise.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["garak_financial"]
+packages = ["garak_financial", "garak_legal", "garak_enterprise"]
 
 [tool.ruff]
 line-length = 100
