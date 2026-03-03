@@ -192,7 +192,10 @@ def apply_buffs(prompt: str, buff_instances: list) -> list[tuple[str, str]]:
 @click.option(
     "--probes",
     default="all",
-    help="Probe categories: 'all' or comma-separated (impartiality,misconduct,...).",
+    help=(
+        "Probe categories: 'all' (8 standard probes), 'full' (all 13 including advanced), "
+        "'advanced' (5 advanced probes only), or comma-separated names."
+    ),
 )
 @click.option(
     "--buffs",
@@ -323,7 +326,12 @@ def main(
     judge_model = judge_model or target_model
 
     # Parse probe selection
-    if probes.lower() == "all":
+    probes_lower = probes.lower()
+    if probes_lower == "all":
+        # Standard probes only — excludes advanced variants
+        selected_probes = [k for k in PROBES if not k.startswith("advanced-")]
+    elif probes_lower == "full":
+        # All probes including advanced variants
         selected_probes = list(PROBES.keys())
     else:
         # Expand group aliases (e.g. "advanced" → all advanced-* probes)

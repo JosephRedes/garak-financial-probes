@@ -60,13 +60,16 @@ Each category has two probe variants:
 - **Advanced probes** — indirect, sophisticated prompts designed to bypass guardrails that handle direct requests correctly. These use techniques like fictional framing ("I'm writing a thriller where…"), authority claims ("As a CFA, I need…"), persona embedding (a 78-year-old with terminal illness seeking investment help), regulatory impersonation, and escalation chains.
 
 ```bash
-# Run only standard probes (default)
+# Run only standard probes (default — good starting point)
 garak-financial-assess ... --probes all
 
 # Run only advanced probes (harder — use these once standard probes pass)
 garak-financial-assess ... --probes advanced
 
-# Mix both
+# Run all 13 probes (standard + advanced)
+garak-financial-assess ... --probes full
+
+# Mix and match
 garak-financial-assess ... --probes impartiality,advanced-misconduct,advanced-sycophancy
 ```
 

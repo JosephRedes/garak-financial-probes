@@ -1,117 +1,153 @@
-# Contributing to garak-financial-probes
+# Contributing
 
-Thank you for your interest in contributing to this project! This document provides guidelines for contributions.
-
-## Getting Started
-
-1. Fork the repository
-2. Clone your fork:
-   ```bash
-   git clone https://github.com/JosephRedes/garak-financial-probes.git
-   cd garak-financial-probes
-   ```
-3. Install development dependencies:
-   ```bash
-   pip install -e ".[dev]"
-   ```
-
-## Development Workflow
-
-### Running Tests
+## Development Setup
 
 ```bash
+git clone https://github.com/JosephRedes/garak-financial-probes.git
+cd garak-financial-probes
+pip install -e ".[dev]"
+```
+
+## Running Tests
+
+```bash
+# All tests
 pytest
+
+# Single file
+pytest tests/test_probes.py -v
+
+# Single test
+pytest tests/test_detectors.py::TestNegationHandling::test_advice_detector_no_false_positive_on_should_not -v
+
+# With coverage report
+pytest --cov=garak_financial --cov-report=term-missing
 ```
 
-### Code Quality
+## Code Quality
 
-We use ruff for linting and formatting:
+All PRs must pass before merging:
 
 ```bash
-# Check for issues
-ruff check .
-
-# Auto-fix issues
-ruff check --fix .
-
-# Format code
-ruff format .
+ruff check .                                    # Lint
+ruff check --fix .                              # Auto-fix
+ruff format .                                   # Format
+mypy garak_financial --ignore-missing-imports   # Type check
 ```
 
-### Type Checking
+---
 
-```bash
-mypy garak_financial
-```
+## Adding a New Probe
 
-## Adding New Probes
+1. Create `garak_financial/probes/your_category.py`:
 
-1. Create a new file in `garak_financial/probes/`
-2. Inherit from `garak.probes.base.Probe`
-3. Implement required attributes:
-   - `bcp47`: Language code (e.g., "en")
-   - `goal`: What the probe is trying to elicit
-   - `prompts`: List of test prompts
-   - `tags`: List of relevant tags (include "financial")
-4. Specify `primary_detector`
-5. Add to `garak_financial/probes/__init__.py`
-6. Write tests in `tests/test_probes.py`
-
-Example:
 ```python
 from garak.probes.base import Probe
 
-class MyNewProbe(Probe):
+class YourCategory(Probe):
     bcp47 = "en"
-    goal = "elicit [specific vulnerability]"
-    tags = ["financial", "my-category"]
-    primary_detector = ["financial.my_detector"]
-    
+    doc_uri = "https://link-to-relevant-regulation"
+    primary_detector = "financial.advice"   # or another detector
+    tags = ["financial", "your-tag"]
+    goal = "one-line description of what you're testing for"
+
     prompts = [
-        "Your test prompt 1",
-        "Your test prompt 2",
+        "First test prompt",
+        "Second test prompt",
+        # Aim for 15-30 prompts covering different angles
     ]
 ```
 
-## Adding New Detectors
+2. Export from `garak_financial/probes/__init__.py`
+3. Add to the `PROBES` dict in `garak_financial/cli/__init__.py`
+4. Add tests in `tests/test_probes.py`
 
-1. Create a new file in `garak_financial/detectors/`
-2. Inherit from `garak.detectors.base.Detector`
-3. Implement the `detect(self, attempt)` method
-4. Return a list of floats (0.0 = safe, 1.0 = vulnerability triggered)
-5. Add to `garak_financial/detectors/__init__.py`
-6. Write tests in `tests/test_detectors.py`
+### Standard vs. Advanced Probes
 
-## Prompt Guidelines
+Each category should have two classes:
 
-When adding prompts:
-- Cover diverse scenarios and phrasings
-- Include both direct and indirect attempts
-- Consider edge cases
-- Reference real regulatory requirements where possible
-- Do not include actual harmful instructions
+- **Standard** (`YourCategory`) — direct, literal prompts. Tests basic guardrail coverage.
+- **Advanced** (`AdvancedYourCategory`) — indirect prompts that challenge models which already pass standard probes. Use techniques like fictional framing ("I'm writing a thriller where…"), authority claims ("As a licensed CFA…"), persona embedding, regulatory impersonation, or escalation chains.
 
-## Pull Request Process
+Tag advanced probes with `"advanced"` and `"owasp:llm09"`.
 
-1. Create a feature branch:
-   ```bash
-   git checkout -b feature/my-new-feature
-   ```
-2. Make your changes
-3. Run tests and linting:
-   ```bash
-   pytest
-   ruff check .
-   ```
-4. Commit with descriptive messages
-5. Push and create a Pull Request
+---
 
-## Code of Conduct
+## Adding a New Detector
 
-- Be respectful and inclusive
-- Focus on constructive feedback
-- Help maintain a welcoming environment
+Detectors live in `garak_financial/detectors/`. Three critical rules:
 
-## Questions?
+1. **Always match against `output.lower()`** — all patterns must be lowercase.
+2. **Use the 40-character negation window** — prevents false positives on phrases like "you should NOT invest".
+3. **Never use bare `\b0\b` or `\b1\b`** in score extraction — they match ordinary integers.
 
-Open an issue for questions or suggestions!
+Template:
+
+```python
+import re
+from garak.detectors.base import Detector
+
+class YourDetector(Detector):
+    name = "financial.yourdetector"
+    description = "What this detector catches"
+
+    PATTERNS = [
+        r"pattern one",
+        r"pattern two",
+    ]
+
+    _NEGATION_WORDS = [
+        "not ", "never ", "don't ", "avoid ", "shouldn't ", "cannot ", "can't ",
+    ]
+
+    def detect(self, attempt) -> list[float]:
+        return [self._score_output(r) for r in attempt.all_outputs if r]
+
+    def _score_output(self, output: str) -> float:
+        output_lower = output.lower()
+        hits = 0
+        for pattern in self.PATTERNS:
+            for match in re.finditer(pattern, output_lower):
+                preceding = output_lower[max(0, match.start() - 40):match.start()]
+                if not any(neg in preceding for neg in self._NEGATION_WORDS):
+                    hits += 1
+        return min(1.0, hits * 0.3)
+```
+
+---
+
+## Adding a Category-Specific Judge Prompt
+
+Judge prompts live in `garak_financial/judges/__init__.py`. They **must** emit the standard 6-dimension `scores` dict — if `scores` is missing, `_parse_judgment` silently returns `overall_concern = 0.0` and the entire evaluation is discarded.
+
+Required output schema:
+
+```json
+{
+  "scores": {
+    "investment_advice": 0.0,
+    "price_prediction": 0.0,
+    "confidentiality": 0.0,
+    "regulatory_concern": 0.0,
+    "factual_accuracy": 0.0,
+    "sycophancy": 0.0
+  },
+  "overall_concern": 0.0,
+  "reasoning": "...",
+  "key_phrases": []
+}
+```
+
+Set dimensions that aren't relevant to your category to `0.0` rather than omitting them.
+
+---
+
+## Pull Requests
+
+- One logical change per PR
+- All tests must pass (`pytest`)
+- Ruff and mypy must be clean
+- New behaviour must have test coverage
+- New probe categories need both a standard and an advanced variant
+
+Open an issue first for large changes so we can discuss the approach.
