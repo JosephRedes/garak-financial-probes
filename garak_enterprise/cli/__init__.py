@@ -53,7 +53,10 @@ from garak_financial.probes import (
 )
 from garak_financial.reporting import ReportGenerator, ResultAggregator
 from garak_financial.utils import LLMClientError, SecureLLMClient, mask_url
+from garak_corpfin.probes import CORPFIN_PROBES
+from garak_hr.probes import HR_PROBES
 from garak_legal.probes import LEGAL_PROBES
+from garak_risk.probes import RISK_PROBES
 
 console = Console()
 logger = logging.getLogger(__name__)
@@ -89,10 +92,21 @@ DOMAIN_REGISTRY: dict[str, dict] = {
         "label": "Legal",
         "description": "Unauthorized legal advice, privilege leakage, fabrication, litigation",
     },
-    # Planned — uncomment as each domain ships:
-    # "risk":    {"probes": RISK_PROBES,    "label": "Risk",              "description": "..."},
-    # "hr":      {"probes": HR_PROBES,      "label": "HR",                "description": "..."},
-    # "corpfin": {"probes": CORPFIN_PROBES, "label": "Corporate Finance", "description": "..."},
+    "risk": {
+        "probes": RISK_PROBES,
+        "label": "Risk",
+        "description": "Model risk guidance, credit risk, stress testing, regulatory capital",
+    },
+    "hr": {
+        "probes": HR_PROBES,
+        "label": "HR",
+        "description": "Protected class bias, employee privacy, termination, compensation",
+    },
+    "corpfin": {
+        "probes": CORPFIN_PROBES,
+        "label": "Corporate Finance",
+        "description": "M&A disclosure, earnings manipulation, valuation, insider information",
+    },
 }
 
 # ---------------------------------------------------------------------------
